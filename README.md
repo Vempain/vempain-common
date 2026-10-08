@@ -14,13 +14,13 @@ so that the backends do not have to depend on each other's API artifacts.
 
 ## Contents
 
-| Package                                  | Types                                                     |
-|------------------------------------------|-----------------------------------------------------------|
-| `fi.poltsi.vempain.common.api`           | `FileTypeEnum` (file classification and mimetype mapping), `TaskStatusEnum` |
-| `fi.poltsi.vempain.common.api.request`   | `LocationRequest`, `TagRequest`, `CopyrightRequest`       |
-| `fi.poltsi.vempain.common.api.response`  | `LocationResponse`, `TaskAcceptedResponse`, `TaskProgressResponse` |
-| `fi.poltsi.vempain.common.rest`          | `TaskAPI`                                                 |
-| `fi.poltsi.vempain.common.task` (core)   | `TaskRunner`, `TaskProgressStore`, `TaskProgress`, `TaskController`, `TaskCommandExecutor`, entities and repositories |
+| Package                                 | Types                                                                                                                 |
+|-----------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `fi.poltsi.vempain.common.api`          | `FileTypeEnum` (file classification and mimetype mapping), `TaskStatusEnum`                                           |
+| `fi.poltsi.vempain.common.api.request`  | `LocationRequest`, `TagRequest`, `CopyrightRequest`                                                                   |
+| `fi.poltsi.vempain.common.api.response` | `LocationResponse`, `TaskAcceptedResponse`, `TaskProgressResponse`                                                    |
+| `fi.poltsi.vempain.common.rest`         | `TaskAPI`                                                                                                             |
+| `fi.poltsi.vempain.common.task` (core)  | `TaskRunner`, `TaskProgressStore`, `TaskProgress`, `TaskController`, `TaskCommandExecutor`, entities and repositories |
 
 Consumers: `vempain-file-backend` (owner of files, tags and locations) and `vempain-admin-backend` (receives ingested files and their metadata).
 
@@ -32,3 +32,7 @@ Consumers: `vempain-file-backend` (owner of files, tags and locations) and `vemp
 ```
 
 Publishing to GitHub Packages is done by CI from `main`; the version is derived from `VERSION` and the existing Git tags.
+
+# License
+
+This project is licensed under the GPL v2. See [LICENSE](LICENSE) for details.
