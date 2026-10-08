@@ -1,0 +1,109 @@
+plugins {
+	id 'java-library'
+	alias(libs.plugins.freefair.lombok)
+	id 'maven-publish'
+	id "jacoco"
+}
+
+def coreArtifactName = "${rootProject.name}-core"
+
+repositories {
+	mavenCentral()
+	// vempain-auth-* (the task runner restores the owner's security context from the shared user account repository)
+	maven {
+		url = "https://maven.pkg.github.com/Vempain/vempain-auth"
+		credentials {
+			username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
+			password = project.findProperty("gpr.token") ?: System.getenv("GITHUB_TOKEN")
+		}
+	}
+}
+
+group = 'fi.poltsi.vempain'
+// CI passes -PreleaseVersion=<tag derived version>; local builds use the catalog placeholder
+version = project.hasProperty("releaseVersion") ? project.releaseVersion : libs.versions.release.get()
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(libs.versions.java.get().toInteger())
+	}
+	withSourcesJar()
+	withJavadocJar()
+}
+
+jar {
+	archiveFileName = "${coreArtifactName}-${version}.jar"
+}
+
+tasks.withType(Javadoc).configureEach {
+	options.addStringOption('Xdoclint:all,-missing', '-quiet')
+}
+
+dependencies {
+	api project(':api')
+	api "fi.poltsi.vempain:vempain-auth-api:${libs.versions.vempain.auth.get()}"
+	implementation "fi.poltsi.vempain:vempain-auth-core:${libs.versions.vempain.auth.get()}"
+	implementation "org.springframework.boot:spring-boot-starter-webmvc:${libs.versions.spring.boot.get()}"
+	implementation "org.springframework.boot:spring-boot-starter-data-jpa:${libs.versions.spring.boot.get()}"
+	implementation "org.springframework.boot:spring-boot-starter-security:${libs.versions.spring.boot.get()}"
+	implementation "org.springframework.boot:spring-boot-starter-jackson:${libs.versions.spring.boot.get()}"
+	implementation "io.swagger.core.v3:swagger-annotations:${libs.versions.swagger.get()}"
+	testImplementation "org.springframework.boot:spring-boot-starter-test:${libs.versions.spring.boot.get()}"
+	testImplementation "org.mockito:mockito-junit-jupiter:${libs.versions.mockito.get()}"
+	testImplementation "org.junit.jupiter:junit-jupiter:${libs.versions.junit.get()}"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher:${libs.versions.junit.get()}"
+}
+
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			from components.java
+			groupId = project.group
+			artifactId = coreArtifactName
+			version = project.version
+			pom {
+				name = coreArtifactName
+				description = "Shared Spring components used by several Vempain backends: the durable background task facility"
+				url = "https://github.com/Vempain/${rootProject.name}"
+				licenses {
+					license {
+						name = "GPL-2.0 License"
+						url = "https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html"
+					}
+				}
+				scm {
+					url = "https://github.com/Vempain/${rootProject.name}"
+				}
+			}
+		}
+	}
+	repositories {
+		maven {
+			name = "GitHubPackages"
+			url = uri("https://maven.pkg.github.com/Vempain/${rootProject.name}")
+			credentials {
+				username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
+				password = project.findProperty("gpr.token") ?: System.getenv("GITHUB_TOKEN")
+			}
+		}
+	}
+}
+
+jacoco {
+	toolVersion = libs.versions.jacoco.get()
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+test {
+	finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+	dependsOn test
+	reports {
+		xml.required = true
+	}
+}

@@ -1,0 +1,101 @@
+plugins {
+	id 'java-library'
+	alias(libs.plugins.freefair.lombok)
+	id 'maven-publish'
+	id "jacoco"
+}
+
+def apiArtifactName = "${rootProject.name}-api"
+
+repositories {
+	mavenCentral()
+}
+
+group = 'fi.poltsi.vempain'
+// CI passes -PreleaseVersion=<tag derived version>; local builds use the catalog placeholder
+version = project.hasProperty("releaseVersion") ? project.releaseVersion : libs.versions.release.get()
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(libs.versions.java.get().toInteger())
+	}
+	// Attach sources and javadoc for Maven consumers
+	withSourcesJar()
+	withJavadocJar()
+}
+
+jar {
+	archiveFileName = "${apiArtifactName}-${version}.jar"
+}
+
+// Quiet javadoc warnings as we're using Lombok which does not generate documentation for the generated methods
+tasks.withType(Javadoc).configureEach {
+	options.addStringOption('Xdoclint:all,-missing', '-quiet') // keep other checks, ignore missing docs
+}
+
+dependencies {
+	// Jackson 3 naming annotations and Jakarta Validation constraints are part of the published DTO contract
+	api "org.springframework.boot:spring-boot-starter-jackson:${libs.versions.spring.boot.get()}"
+	api "org.springframework.boot:spring-boot-starter-validation:${libs.versions.spring.boot.get()}"
+	// Spring MVC annotations and ResponseEntity used by the published REST interfaces (TaskAPI)
+	api "org.springframework.boot:spring-boot-starter-webmvc:${libs.versions.spring.boot.get()}"
+	implementation "io.swagger.core.v3:swagger-annotations:${libs.versions.swagger.get()}"
+	testImplementation "org.springframework.boot:spring-boot-starter-test:${libs.versions.spring.boot.get()}"
+	testImplementation "org.junit.jupiter:junit-jupiter:${libs.versions.junit.get()}"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher:${libs.versions.junit.get()}"
+}
+
+// Publish the API module to GitHub Packages when invoked by CI
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			from components.java
+			groupId = project.group
+			artifactId = apiArtifactName
+			version = project.version
+			pom {
+				name = apiArtifactName
+				description = "Shared API types (DTOs and enums) used by several Vempain backends"
+				url = "https://github.com/Vempain/${rootProject.name}"
+				licenses {
+					license {
+						name = "GPL-2.0 License"
+						url = "https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html"
+					}
+				}
+				scm {
+					url = "https://github.com/Vempain/${rootProject.name}"
+				}
+			}
+		}
+	}
+	repositories {
+		maven {
+			name = "GitHubPackages"
+			url = uri("https://maven.pkg.github.com/Vempain/${rootProject.name}")
+			credentials {
+				username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
+				password = project.findProperty("gpr.token") ?: System.getenv("GITHUB_TOKEN")
+			}
+		}
+	}
+}
+
+jacoco {
+	toolVersion = libs.versions.jacoco.get()
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+test {
+	finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+	dependsOn test
+	reports {
+		xml.required = true
+	}
+}

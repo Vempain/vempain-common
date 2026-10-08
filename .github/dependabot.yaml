@@ -1,0 +1,25 @@
+version: 2
+
+# vempain-common consumes only Maven Central dependencies, so no private registry is declared; it only publishes to GitHub Packages.
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        update-types: [ minor, patch, major ]
+
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      weekly-dependencies:
+        applies-to: version-updates
+        patterns: [ "*" ]
+        update-types: [ minor, patch, major ]
+      security-dependencies:
+        applies-to: security-updates
+        patterns: [ "*" ]

@@ -1,0 +1,13 @@
+[versions]
+release = "0.0.1-SNAPSHOT"
+java = "25"
+spring-boot = "4.1.1"
+freefair-lombok = "9.8.0"
+jacoco = "0.8.15"
+junit = "6.1.3"
+swagger = "2.2.55"
+mockito = "5.24.0"
+vempain-auth = "1.0.29"
+
+[plugins]
+freefair-lombok = { id = "io.freefair.lombok", version.ref = "freefair-lombok" }
