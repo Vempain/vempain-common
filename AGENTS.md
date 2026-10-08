@@ -13,17 +13,17 @@
 
 ## Layout
 
-| Path                                                               | Purpose                                                                       |
-|--------------------------------------------------------------------|-------------------------------------------------------------------------------|
-| `api/src/main/java/fi/poltsi/vempain/common/api/`                  | `FileTypeEnum`, `TaskStatusEnum`                                              |
-| `api/src/main/java/fi/poltsi/vempain/common/api/request/`          | `LocationRequest`, `TagRequest`, `CopyrightRequest`                           |
-| `api/src/main/java/fi/poltsi/vempain/common/api/response/`         | `LocationResponse`, `TaskAcceptedResponse`, `TaskProgressResponse`            |
-| `api/src/main/java/fi/poltsi/vempain/common/rest/`                 | `TaskAPI` (`/tasks`: list, get, cancel, dismiss)                              |
-| `core/src/main/java/fi/poltsi/vempain/common/task/`                | `TaskRunner`, `TaskProgressStore`, `TaskProgress`, `TaskController`, `TaskCommandExecutor` (interface), `TaskWork`, `Compensation`, `TaskCancelledException` |
-| `core/src/main/java/fi/poltsi/vempain/common/task/entity/`         | `TaskRecordEntity`, `TaskCompensationEntity` (tables `task_record`, `task_compensation`) |
-| `core/src/main/java/fi/poltsi/vempain/common/task/repository/`     | `TaskRecordRepository` (lease based `claimNext`), `TaskCompensationRepository` |
-| `core/src/main/resources/db/task/task_tables.sql`                  | Reference schema; copied into each consumer's own Flyway tree                 |
-| `*/src/test/java/...`                                              | `FileTypeEnumUTC`, `RequestContractJTC`, `ResponseContractJTC`, `TaskResponseContractJTC`, `TaskProgressStoreUTC`, `TaskProgressStoreDurableUTC`, `TaskRunnerUTC`, `TaskRunnerDurableUTC` |
+| Path                                                           | Purpose                                                                                                                                                                                   |
+|----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `api/src/main/java/fi/poltsi/vempain/common/api/`              | `FileTypeEnum`, `TaskStatusEnum`                                                                                                                                                          |
+| `api/src/main/java/fi/poltsi/vempain/common/api/request/`      | `LocationRequest`, `TagRequest`, `CopyrightRequest`                                                                                                                                       |
+| `api/src/main/java/fi/poltsi/vempain/common/api/response/`     | `LocationResponse`, `TaskAcceptedResponse`, `TaskProgressResponse`                                                                                                                        |
+| `api/src/main/java/fi/poltsi/vempain/common/rest/`             | `TaskAPI` (`/tasks`: list, get, cancel, dismiss)                                                                                                                                          |
+| `core/src/main/java/fi/poltsi/vempain/common/task/`            | `TaskRunner`, `TaskProgressStore`, `TaskProgress`, `TaskController`, `TaskCommandExecutor` (interface), `TaskWork`, `Compensation`, `TaskCancelledException`                              |
+| `core/src/main/java/fi/poltsi/vempain/common/task/entity/`     | `TaskRecordEntity`, `TaskCompensationEntity` (tables `task_record`, `task_compensation`)                                                                                                  |
+| `core/src/main/java/fi/poltsi/vempain/common/task/repository/` | `TaskRecordRepository` (lease based `claimNext`), `TaskCompensationRepository`                                                                                                            |
+| `core/src/main/resources/db/task/task_tables.sql`              | Reference schema; copied into each consumer's own Flyway tree                                                                                                                             |
+| `*/src/test/java/...`                                          | `FileTypeEnumUTC`, `RequestContractJTC`, `ResponseContractJTC`, `TaskResponseContractJTC`, `TaskProgressStoreUTC`, `TaskProgressStoreDurableUTC`, `TaskRunnerUTC`, `TaskRunnerDurableUTC` |
 
 ## The task facility (core)
 
