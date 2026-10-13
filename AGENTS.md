@@ -32,6 +32,12 @@
   re-claimed after a crash). The claimed task is executed through the host's single `TaskCommandExecutor` bean, which maps the task type
   and JSON payload to a service call; the `localFallback` lambda is only used by unit tests that build a `TaskRunner` without repositories
   (`new TaskRunner(new TaskProgressStore(), Runnable::run)`).
+- `TaskProgressStore` writes every progress report (`advance`, `advanceFailed`, `message`, `setTotalSteps`, status changes) and every
+  durable compensation in a transaction of its own (`REQUIRES_NEW` on the primary `PlatformTransactionManager`, injected through an
+  `ObjectProvider` so that a dual-datasource host such as the admin backend uses its task datasource). Task bodies run inside the
+  hosting service's transactions; without this the steps would only become visible to the polling clients when the body commits.
+  Report one step per smallest unit of work (every transferred file, not the gallery or group containing them) and set the total at
+  submit time so that `total_steps` is right from the first poll (`TaskProgressStoreDurableUTC`).
 - Work reports progress through `TaskProgress` (`advance`, `advanceFailed`, `message`, `setTotalSteps`), calls `checkpoint()` between
   units of work so that a cancel request stops it, and registers undo actions with `registerCompensation` (in-process) or
   `registerDurableCompensation` (serialized command replayed by `TaskCommandExecutor.compensate`). On cancel or failure the runner runs

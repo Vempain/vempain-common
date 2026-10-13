@@ -27,6 +27,12 @@ class FileTypeEnumUTC {
 			"image/x-thumbnail, THUMB",
 			"application/vnd.ms-excel, DOCUMENT",
 			"application/x-made-up, UNKNOWN",
+			"text/x-unknown-notes, DOCUMENT",
+			"application/vnd.ms-outlook, DOCUMENT",
+			"application/vnd.oasis.opendocument.graphics, DOCUMENT",
+			"application/vnd.openxmlformats-officedocument.drawingml.chart, DOCUMENT",
+			"application/zip, ARCHIVE",
+			"APPLICATION/X-7Z-COMPRESSED, ARCHIVE",
 	})
 	void mapsMimetypesToFileTypes(String mimetype, FileTypeEnum expected) {
 		assertThat(FileTypeEnum.getFileTypeByMimetype(mimetype)).isEqualTo(expected);
