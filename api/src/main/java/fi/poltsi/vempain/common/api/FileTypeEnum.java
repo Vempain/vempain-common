@@ -191,16 +191,7 @@ public enum FileTypeEnum {
 			return DOCUMENT;
 		}
 
-		if (mt.equals("application/gzip") ||
-		    mt.equals("application/x-bzip2") ||
-		    mt.equals("application/zip") ||
-		    mt.equals("application/x-7z-compressed") ||
-		    mt.equals("application/x-rar-compressed") ||
-		    mt.equals("application/x-tar") ||
-		    mt.equals("application/x-xz")) {
-			return ARCHIVE;
-		}
-
+		// The archive mimetypes are all explicit entries of BY_MIMETYPE (step 1), so no family fallback is needed for them
 		return UNKNOWN;
 	}
 

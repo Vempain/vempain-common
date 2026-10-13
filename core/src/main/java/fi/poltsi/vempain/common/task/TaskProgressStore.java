@@ -6,11 +6,15 @@ import fi.poltsi.vempain.common.task.entity.TaskRecordEntity;
 import fi.poltsi.vempain.common.task.repository.TaskCompensationRepository;
 import fi.poltsi.vempain.common.task.repository.TaskRecordRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
@@ -26,6 +30,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Durable task registry. The small in-memory map is only a compatibility cache for unit tests and
  * currently executing work; all production task state is read from PostgreSQL.
+ * <p>
+ * Progress reports and compensations are written in a transaction of their own ({@code REQUIRES_NEW}): a task body usually runs
+ * inside a transaction of the hosting service, and the steps it reports must be visible to the polling clients while that
+ * transaction is still open, not only once it commits.
  */
 @Slf4j
 @Component
@@ -34,6 +42,7 @@ public class TaskProgressStore {
 	private final TaskRecordRepository       repository;
 	private final TaskCompensationRepository compensationRepository;
 	private final ObjectMapper               objectMapper;
+	private final TransactionTemplate progressTransaction;
 
 	@Value("${vempain.scheduling.enabled:true}")
 	private boolean schedulingEnabled;
@@ -43,16 +52,49 @@ public class TaskProgressStore {
 	private long leaseSeconds;
 
 	public TaskProgressStore() {
-		this.repository             = null;
-		this.compensationRepository = null;
-		this.objectMapper           = null;
+		this(null, null, null, (PlatformTransactionManager) null);
+	}
+
+	/**
+	 * Durable store whose progress writes join the caller's transaction; meant for unit tests of the store itself.
+	 */
+	public TaskProgressStore(TaskRecordRepository repository, TaskCompensationRepository compensationRepository, ObjectMapper objectMapper) {
+		this(repository, compensationRepository, objectMapper, (PlatformTransactionManager) null);
 	}
 
 	@Autowired
-	public TaskProgressStore(TaskRecordRepository repository, TaskCompensationRepository compensationRepository, ObjectMapper objectMapper) {
+	public TaskProgressStore(TaskRecordRepository repository, TaskCompensationRepository compensationRepository, ObjectMapper objectMapper,
+							 ObjectProvider<PlatformTransactionManager> transactionManager) {
+		this(repository, compensationRepository, objectMapper, transactionManager.getIfAvailable());
+	}
+
+	/**
+	 * @param transactionManager the manager of the datasource holding the task tables; progress writes run in a new transaction of
+	 *                           it so that they commit independently of the task body. Null joins the surrounding transaction.
+	 */
+	public TaskProgressStore(TaskRecordRepository repository, TaskCompensationRepository compensationRepository, ObjectMapper objectMapper,
+							 PlatformTransactionManager transactionManager) {
 		this.repository             = repository;
 		this.compensationRepository = compensationRepository;
 		this.objectMapper           = objectMapper;
+		this.progressTransaction    = transactionManager == null ? null : newProgressTransaction(transactionManager);
+	}
+
+	private static TransactionTemplate newProgressTransaction(PlatformTransactionManager transactionManager) {
+		var template = new TransactionTemplate(transactionManager);
+		template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+		return template;
+	}
+
+	/**
+	 * Runs a progress write in its own transaction when a transaction manager is configured; otherwise in the calling context.
+	 */
+	private void inOwnTransaction(Runnable write) {
+		if (progressTransaction == null) {
+			write.run();
+		} else {
+			progressTransaction.executeWithoutResult(status -> write.run());
+		}
 	}
 
 	boolean isDurable() {
@@ -193,20 +235,24 @@ public class TaskProgressStore {
 		return accepted;
 	}
 
+	/**
+	 * Persists the current state of the task. The write commits on its own (see the class comment), so every reported step is
+	 * visible to the clients immediately, also from inside a transactional task body.
+	 */
 	void save(TaskProgress progress) {
 		if (repository == null) {
 			localTasks.put(progress.getId(), progress);
 			return;
 		}
 
-		repository.findById(progress.getId())
-		          .ifPresent(entity -> {
-					  if (progress.getWorkerId() == null || progress.getWorkerId()
-			                                                        .equals(entity.getWorkerId())) {
-						  copyToEntity(progress, entity);
-						  repository.save(entity);
-					  }
-				  });
+		inOwnTransaction(() -> repository.findById(progress.getId())
+										 .ifPresent(entity -> {
+											 if (progress.getWorkerId() == null || progress.getWorkerId()
+																						   .equals(entity.getWorkerId())) {
+												 copyToEntity(progress, entity);
+												 repository.save(entity);
+											 }
+										 }));
 	}
 
 	void registerCompensation(TaskProgress progress, String description, String commandType, Object payload) {
@@ -219,7 +265,8 @@ public class TaskProgressStore {
 		compensation.setCommandType(commandType);
 		compensation.setPayload(serialize(payload));
 		compensation.setCreatedAt(Instant.now());
-		compensationRepository.save(compensation);
+		// Committed on its own: the undo must survive even when the task body's transaction rolls back afterwards
+		inOwnTransaction(() -> compensationRepository.save(compensation));
 	}
 
 	List<TaskCompensationEntity> durableCompensations(TaskProgress progress) {

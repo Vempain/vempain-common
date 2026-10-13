@@ -107,6 +107,33 @@ class TaskProgressStoreDurableUTC {
 	}
 
 	@Test
+	void progressAndCompensationsAreCommittedInTheirOwnTransaction() {
+		var transactionManager = org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class);
+		var status             = org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class);
+		var definition         = ArgumentCaptor.forClass(org.springframework.transaction.TransactionDefinition.class);
+		when(transactionManager.getTransaction(definition.capture())).thenReturn(status);
+		var transactional = new TaskProgressStore(repository, compensationRepository, new ObjectMapper(), transactionManager);
+		ReflectionTestUtils.setField(transactional, "leaseSeconds", 60L);
+		var entity = entity("task-3", 7L, TaskStatusEnum.RUNNING);
+		entity.setWorkerId("worker-a");
+		when(repository.findById("task-3")).thenReturn(Optional.of(entity));
+		when(repository.claimNext("worker-a", 60L)).thenReturn(entity);
+		var progress = transactional.claimNext("worker-a")
+									.orElseThrow();
+
+		progress.advance("first file");
+		progress.registerDurableCompensation("undo", "REVERT", java.util.Map.of("file_id", 1L));
+
+		assertThat(definition.getAllValues()).hasSize(2)
+											 .allSatisfy(seen -> assertThat(seen.getPropagationBehavior())
+													 .isEqualTo(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW));
+		verify(transactionManager, org.mockito.Mockito.times(2)).commit(status);
+		verify(repository).save(entity);
+		assertThat(entity.getCompletedSteps()).isEqualTo(1);
+		verify(compensationRepository).save(any(TaskCompensationEntity.class));
+	}
+
+	@Test
 	void removesAndEvictsPersistedTasks() {
 		when(repository.existsById("task-3")).thenReturn(true);
 		assertThat(store.remove("task-3")).isTrue();
@@ -139,5 +166,69 @@ class TaskProgressStoreDurableUTC {
 		var progress = new TaskProgress(id, "SCAN_DIRECTORIES", "title", 7L, 1);
 		progress.attach(store, "{}", workerId);
 		return progress;
+	}
+
+	@Test
+	void coversTheRemainingDurableBranches() {
+		var provider = org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+		when(provider.getIfAvailable()).thenReturn(null);
+		@SuppressWarnings("unchecked")
+		var autowired = new TaskProgressStore(repository, compensationRepository, new ObjectMapper(), provider);
+		assertThat(autowired.isDurable()).isTrue();
+
+		// find: a task that is not cached locally is rebuilt from the row, a cached one is refreshed in place
+		var entity = entity("task-9", 7L, TaskStatusEnum.RUNNING);
+		entity.setResult("{\"count\":3}");
+		when(repository.findById("task-9")).thenReturn(Optional.of(entity));
+		var fresh = store.find("task-9")
+						 .orElseThrow();
+		assertThat(fresh.getResult()).isEqualTo(java.util.Map.of("count", 3));
+		entity.setWorkerId("worker-a");
+		when(repository.claimNext("worker-a", 60L)).thenReturn(entity);
+		var claimed = store.claimNext("worker-a")
+						   .orElseThrow();
+		assertThat(store.claimNext("worker-a")
+						.orElseThrow()).isSameAs(claimed);
+		assertThat(store.find("task-9")
+						.orElseThrow()).isSameAs(claimed);
+
+		// remove: unknown ids are reported, known ones deleted
+		when(repository.existsById("unknown")).thenReturn(false);
+		assertThat(store.remove("unknown")).isFalse();
+		when(repository.existsById("task-9")).thenReturn(true);
+		assertThat(store.remove("task-9")).isTrue();
+		verify(repository).deleteById("task-9");
+
+		// requestCancel: a running task moves to CANCELLING when the row accepted the request
+		var runningRow = entity("task-10", 7L, TaskStatusEnum.RUNNING);
+		runningRow.setWorkerId("worker-a");
+		when(repository.findById("task-10")).thenReturn(Optional.of(runningRow));
+		var running = claimedProgress("task-10", "worker-a");
+		running.start();
+		when(repository.requestCancel("task-10")).thenReturn(1);
+		assertThat(store.requestCancel(running)).isTrue();
+		assertThat(running.getStatus()).isEqualTo(TaskStatusEnum.CANCELLING);
+		when(repository.requestCancel("task-11")).thenReturn(0);
+		assertThat(store.requestCancel(claimedProgress("task-11", "worker-a"))).isFalse();
+
+		// a result of a finished task is serialised into the row
+		running.complete(java.util.Map.of("published", 2));
+		var saved = ArgumentCaptor.forClass(TaskRecordEntity.class);
+		verify(repository, org.mockito.Mockito.atLeastOnce()).save(saved.capture());
+		assertThat(saved.getAllValues()
+						.stream()
+						.anyMatch(row -> "{\"published\":2}".equals(row.getResult()))).isTrue();
+	}
+
+	@Test
+	void inMemoryStoreHasNoDurableCompensationsAndNoClaims() {
+		var local    = new TaskProgressStore();
+		var progress = local.create("SCAN", "Scan", 1L, 1);
+		assertThat(local.isDurable()).isFalse();
+		assertThat(local.claimNext("worker")).isEmpty();
+		local.registerCompensation(progress, "undo", "CMD", java.util.Map.of());
+		assertThat(local.durableCompensations(progress)).isEmpty();
+		assertThat(local.requestCancel(progress)).isTrue();
+		assertThat(local.remove("missing")).isFalse();
 	}
 }
