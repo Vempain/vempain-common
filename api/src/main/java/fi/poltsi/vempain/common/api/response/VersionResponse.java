@@ -15,9 +15,10 @@ import tools.jackson.databind.annotation.JsonNaming;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @Schema(description = "Version information for a Vempain backend")
 public class VersionResponse {
-	@Schema(description = "Application version", example = "1.2.3", requiredMode = Schema.RequiredMode.REQUIRED)
-	private String version;
 
-	@Schema(description = "Backend service identifier", example = "vempain-file-backend", requiredMode = Schema.RequiredMode.REQUIRED)
-	private String service;
+    @Schema(description = "Application version", example = "1.2.3", requiredMode = Schema.RequiredMode.REQUIRED)
+    private String version;
+
+    @Schema(description = "Backend service identifier", example = "vempain-file-backend", requiredMode = Schema.RequiredMode.REQUIRED)
+    private String service;
 }
