@@ -56,6 +56,13 @@ public interface TaskRecordRepository extends JpaRepository<TaskRecordEntity, St
 
     @Modifying
     @Transactional
-    @Query("delete from TaskRecordEntity t where t.status in (fi.poltsi.vempain.common.api.TaskStatusEnum.COMPLETED, fi.poltsi.vempain.common.api.TaskStatusEnum.FAILED, fi.poltsi.vempain.common.api.TaskStatusEnum.CANCELLED) and t.finishedAt < :cutoff")
+    @Query("""
+            delete from TaskRecordEntity t
+            where t.status in (
+                fi.poltsi.vempain.common.api.TaskStatusEnum.COMPLETED,
+                fi.poltsi.vempain.common.api.TaskStatusEnum.FAILED,
+                fi.poltsi.vempain.common.api.TaskStatusEnum.CANCELLED
+            )
+            and t.finishedAt < :cutoff""")
     int deleteFinishedBefore(@Param("cutoff") Instant cutoff);
 }

@@ -78,13 +78,6 @@ public class TaskRunner {
         return progress;
     }
 
-    /**
-     * Production uses the durable payload. The fallback exists solely for lightweight unit tests that construct a runner without a JPA repository.
-     */
-    public TaskProgress submitDurable(String type, String title, long totalSteps, Object payload, TaskWork<?> localFallback) {
-        return store.isDurable() ? submit(type, title, totalSteps, payload) : submit(type, title, totalSteps, localFallback);
-    }
-
     /** Compatibility overload for existing unit tests; production code submits durable commands. */
     public TaskProgress submit(String type, String title, long totalSteps, TaskWork<?> work) {
         var progress = store.create(type, title, currentUserId(), totalSteps);
@@ -117,6 +110,13 @@ public class TaskRunner {
             executor.execute(runnable);
         }
         return progress;
+    }
+
+    /**
+     * Production uses the durable payload. The fallback exists solely for lightweight unit tests that construct a runner without a JPA repository.
+     */
+    public TaskProgress submitDurable(String type, String title, long totalSteps, Object payload, TaskWork<?> localFallback) {
+        return store.isDurable() ? submit(type, title, totalSteps, payload) : submit(type, title, totalSteps, localFallback);
     }
 
     private void schedulePollingAfterCommit(TaskProgress progress) {
