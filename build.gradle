@@ -1,0 +1,4 @@
+// Root build file of the multi-project build; the subprojects keep their own build files.
+
+// Team code convention: Spotless with the shared Eclipse profile, Checkstyle, build constraints, git hooks.
+apply from: 'gradle/team-convention.gradle'

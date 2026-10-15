@@ -21,6 +21,6 @@ import tools.jackson.databind.annotation.JsonNaming;
 @Schema(name = "LocationResponse", description = "Response DTO containing location (GPS) data")
 public class LocationResponse extends LocationRequest {
 
-	@Schema(description = "GPS location ID", example = "42")
-	private Long id;
+    @Schema(description = "GPS location ID", example = "42")
+    private Long id;
 }

@@ -16,18 +16,18 @@ import tools.jackson.databind.annotation.JsonNaming;
 @Schema(name = "CopyrightRequest", description = "Copyright information request")
 public class CopyrightRequest {
 
-	@Schema(description = "Copyright holder name", example = "John Doe")
-	private String rightsHolder;
-	@Schema(description = "Copyright terms", example = "All rights reserved")
-	private String rightsTerms;
-	@Schema(description = "Copyright URL", example = "https://example.com/copyright")
-	private String rightsUrl;
-	@Schema(description = "Creator name", example = "John Doe")
-	private String creatorName;
-	@Schema(description = "Creator email", example = "someone@somewhere.tld")
-	private String creatorEmail;
-	@Schema(description = "Creator country", example = "Finland")
-	private String creatorCountry;
-	@Schema(description = "Creator URL", example = "https://example.com/creator")
-	private String creatorUrl;
+    @Schema(description = "Copyright holder name", example = "John Doe")
+    private String rightsHolder;
+    @Schema(description = "Copyright terms", example = "All rights reserved")
+    private String rightsTerms;
+    @Schema(description = "Copyright URL", example = "https://example.com/copyright")
+    private String rightsUrl;
+    @Schema(description = "Creator name", example = "John Doe")
+    private String creatorName;
+    @Schema(description = "Creator email", example = "someone@somewhere.tld")
+    private String creatorEmail;
+    @Schema(description = "Creator country", example = "Finland")
+    private String creatorCountry;
+    @Schema(description = "Creator URL", example = "https://example.com/creator")
+    private String creatorUrl;
 }
