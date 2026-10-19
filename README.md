@@ -14,13 +14,15 @@ so that the backends do not have to depend on each other's API artifacts.
 
 ## Contents
 
-| Package                                 | Types                                                                                                                 |
-|-----------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `fi.poltsi.vempain.common.api`          | `FileTypeEnum` (file classification and mimetype mapping), `TaskStatusEnum`                                           |
-| `fi.poltsi.vempain.common.api.request`  | `LocationRequest`, `TagRequest`, `CopyrightRequest`                                                                   |
-| `fi.poltsi.vempain.common.api.response` | `LocationResponse`, `TaskAcceptedResponse`, `TaskProgressResponse`                                                    |
-| `fi.poltsi.vempain.common.rest`         | `TaskAPI`                                                                                                             |
-| `fi.poltsi.vempain.common.task` (core)  | `TaskRunner`, `TaskProgressStore`, `TaskProgress`, `TaskController`, `TaskCommandExecutor`, entities and repositories |
+|                  Package                  |                                                         Types                                                         |
+|-------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `fi.poltsi.vempain.common.api`            | `FileTypeEnum` (file classification and mimetype mapping), `TaskStatusEnum`                                           |
+| `fi.poltsi.vempain.common.api.request`    | `LocationRequest`, `TagRequest`, `CopyrightRequest`                                                                   |
+| `fi.poltsi.vempain.common.api.response`   | `LocationResponse`, `TaskAcceptedResponse`, `TaskProgressResponse`                                                    |
+| `fi.poltsi.vempain.common.rest`           | `TaskAPI`                                                                                                             |
+| `fi.poltsi.vempain.common.task` (core)    | `TaskRunner`, `TaskProgressStore`, `TaskProgress`, `TaskController`, `TaskCommandExecutor`, entities and repositories |
+| `fi.poltsi.vempain.common.task` (core)    | `TaskMetrics`: the `vempain.tasks.*` meters of the task facility                                                      |
+| `fi.poltsi.vempain.common.metrics` (core) | `MetricsExportEnvironmentPostProcessor`: `vempain.metrics.*` -> OTLP push export (`management.otlp.metrics.export.*`) |
 
 Consumers: `vempain-file-backend` (owner of files, tags and locations) and `vempain-admin-backend` (receives ingested files and their metadata).
 

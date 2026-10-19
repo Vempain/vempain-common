@@ -8,6 +8,8 @@ import java.util.concurrent.Executor;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 
+import org.slf4j.MDC;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,6 +23,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import fi.poltsi.vempain.auth.repository.UserAccountRepository;
 import fi.poltsi.vempain.auth.service.UserDetailsImpl;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.tracing.Tracer;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -40,25 +45,54 @@ public class TaskRunner {
         .toString();
     private final int workerCount;
     private final Map<String, TaskProgress> active = new ConcurrentHashMap<>();
+    private final TaskMetrics metrics;
+    /**
+     * Tracer of the host, when it traces: a task runs later on another thread, so it gets a span of its own ({@code task <type>}); null without tracing.
+     */
+    private final Tracer tracer;
 
     @Autowired
     public TaskRunner(TaskProgressStore store, TaskCommandExecutor commandExecutor, UserAccountRepository userAccountRepository,
-            @Value("${vempain.tasks.worker-count:4}") int workerCount) {
-        this(store, newExecutor(Math.max(1, workerCount)), true, commandExecutor, userAccountRepository, workerCount);
+            @Value("${vempain.tasks.worker-count:4}") int workerCount, ObjectProvider<MeterRegistry> meterRegistry, ObjectProvider<Tracer> tracer) {
+        this(store, newExecutor(Math.max(1, workerCount)), true, commandExecutor, userAccountRepository, workerCount,
+                meterRegistry.getIfAvailable(() -> Metrics.globalRegistry), tracer.getIfAvailable());
+    }
+
+    /**
+     * Production constructor without a Spring context; the meters go to the global registry, which is empty (and therefore free) outside Spring Boot.
+     */
+    public TaskRunner(TaskProgressStore store, TaskCommandExecutor commandExecutor, UserAccountRepository userAccountRepository, int workerCount) {
+        this(store, newExecutor(Math.max(1, workerCount)), true, commandExecutor, userAccountRepository, workerCount, Metrics.globalRegistry, null);
     }
 
     public TaskRunner(TaskProgressStore store, Executor executor) {
-        this(store, executor, false, null, null, 1);
+        this(store, executor, Metrics.globalRegistry);
+    }
+
+    /**
+     * Runner for unit tests that want to assert the task meters: the given registry receives them.
+     */
+    public TaskRunner(TaskProgressStore store, Executor executor, MeterRegistry meterRegistry) {
+        this(store, executor, false, null, null, 1, meterRegistry, null);
+    }
+
+    /**
+     * Runner for unit tests of the tracing behaviour: the given tracer receives the task spans.
+     */
+    public TaskRunner(TaskProgressStore store, Executor executor, MeterRegistry meterRegistry, Tracer tracer) {
+        this(store, executor, false, null, null, 1, meterRegistry, tracer);
     }
 
     private TaskRunner(TaskProgressStore store, Executor executor, boolean ownsExecutor, TaskCommandExecutor commandExecutor,
-            UserAccountRepository userAccountRepository, int workerCount) {
+            UserAccountRepository userAccountRepository, int workerCount, MeterRegistry meterRegistry, Tracer tracer) {
         this.store = store;
         this.executor = executor;
         this.ownsExecutor = ownsExecutor;
         this.commandExecutor = commandExecutor;
         this.userAccountRepository = userAccountRepository;
         this.workerCount = Math.max(1, workerCount);
+        this.metrics = new TaskMetrics(meterRegistry, active::size, store::countQueued);
+        this.tracer = tracer;
     }
 
     public boolean cancel(TaskProgress progress) {
@@ -74,6 +108,9 @@ public class TaskRunner {
      */
     public TaskProgress submit(String type, String title, long totalSteps, Object payload) {
         var progress = store.create(type, title, currentUserId(), totalSteps, payload);
+        metrics.submitted(type, true);
+        // Logged inside the trace of the submitting request: the task itself runs later in a trace of its own, the task id joins the two
+        log.info("Submitted background task {} ({}): {}", progress.getId(), type, title);
         schedulePollingAfterCommit(progress);
         return progress;
     }
@@ -81,12 +118,14 @@ public class TaskRunner {
     /** Compatibility overload for existing unit tests; production code submits durable commands. */
     public TaskProgress submit(String type, String title, long totalSteps, TaskWork<?> work) {
         var progress = store.create(type, title, currentUserId(), totalSteps);
+        metrics.submitted(type, false);
+        log.info("Submitted background task {} ({}): {}", progress.getId(), type, title);
         var securityContext = copyOfCurrentSecurityContext();
         Runnable runnable = () -> {
             var previous = SecurityContextHolder.getContext();
             SecurityContextHolder.setContext(securityContext);
             try {
-                executeLegacy(progress, work);
+                traced(progress, () -> executeLegacy(progress, work));
             } finally {
                 SecurityContextHolder.setContext(previous);
             }
@@ -152,7 +191,7 @@ public class TaskRunner {
             store.claimNext(workerId)
                 .ifPresent(progress -> {
                     active.put(progress.getId(), progress);
-                    executor.execute(() -> executeDurable(progress));
+                    executor.execute(() -> traced(progress, () -> executeDurable(progress)));
                 });
         }
     }
@@ -162,6 +201,37 @@ public class TaskRunner {
         // A task reports progress frequently, but heartbeat also protects long external calls.
         active.values()
             .forEach(store::heartbeat);
+    }
+
+    /**
+     * Runs the task body with the task id in the MDC of every log line it writes and, when the host traces, inside a span of its own named after the task type
+     * (a task executes later on a worker thread, outside the trace of the request that submitted it).
+     */
+    private void traced(TaskProgress progress, Runnable body) {
+        MDC.put("taskId", progress.getId());
+        MDC.put("taskType", progress.getType());
+        try {
+            if (tracer == null) {
+                body.run();
+                return;
+            }
+            var span = tracer.nextSpan()
+                .name("task " + progress.getType())
+                .tag("task.type", progress.getType() == null ? "" : progress.getType())
+                .tag("task.id", progress.getId())
+                .start();
+            try (var scope = tracer.withSpan(span)) {
+                body.run();
+            } catch (RuntimeException e) {
+                span.error(e);
+                throw e;
+            } finally {
+                span.end();
+            }
+        } finally {
+            MDC.remove("taskId");
+            MDC.remove("taskType");
+        }
     }
 
     private void executeDurable(TaskProgress progress) {
@@ -180,6 +250,7 @@ public class TaskRunner {
                 return;
             }
             progress.start();
+            metrics.started(progress);
             var result = commandExecutor.execute(progress);
             progress.complete(result);
         } catch (TaskCancelledException e) {
@@ -193,6 +264,7 @@ public class TaskRunner {
             progress.fail(failures == 0 ? message : message + " (" + failures + " changes could not be reverted)");
         } finally {
             active.remove(progress.getId());
+            metrics.finished(progress);
             SecurityContextHolder.clearContext();
         }
     }
@@ -200,9 +272,11 @@ public class TaskRunner {
     private void executeLegacy(TaskProgress progress, TaskWork<?> work) {
         if (progress.isCancelRequested()) {
             progress.cancelled("Cancelled before it started");
+            metrics.finished(progress);
             return;
         }
         progress.start();
+        metrics.started(progress);
         try {
             progress.complete(work.run(progress));
         } catch (TaskCancelledException e) {
@@ -213,6 +287,8 @@ public class TaskRunner {
             var message = e.getMessage() == null ? e.getClass()
                 .getSimpleName() : e.getMessage();
             progress.fail(failures == 0 ? message : message + " (" + failures + " changes could not be reverted)");
+        } finally {
+            metrics.finished(progress);
         }
     }
 
@@ -231,6 +307,7 @@ public class TaskRunner {
                     progress.countReverted();
                 } catch (Exception e) {
                     failures++;
+                    metrics.compensationFailed(progress);
                     log.error("Could not revert durable task compensation {}", compensation.getId(), e);
                 }
             }
@@ -243,6 +320,7 @@ public class TaskRunner {
                 progress.countReverted();
             } catch (Exception e) {
                 failures++;
+                metrics.compensationFailed(progress);
                 log.error("Could not revert task {}", progress.getId(), e);
             }
         }
