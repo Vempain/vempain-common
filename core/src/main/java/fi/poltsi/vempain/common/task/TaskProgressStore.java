@@ -172,6 +172,19 @@ public class TaskProgressStore {
         return repository == null ? localTasks.size() : Math.toIntExact(repository.count());
     }
 
+    /**
+     * Number of tasks waiting for a worker: the queued rows of the task table, or the queued entries of the in-memory cache without a repository.
+     */
+    public long countQueued() {
+        if (repository == null) {
+            return localTasks.values()
+                .stream()
+                .filter(progress -> progress.getStatus() == TaskStatusEnum.QUEUED)
+                .count();
+        }
+        return repository.countByStatus(TaskStatusEnum.QUEUED);
+    }
+
     public int evictFinishedBefore(Instant cutoff) {
         if (repository == null) {
             var before = localTasks.size();

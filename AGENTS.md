@@ -13,13 +13,15 @@
 
 ## Layout
 
-| Path                                                           | Purpose                                                                                                                                                                                   |
+|                              Path                              |                                                                                          Purpose                                                                                          |
 |----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `api/src/main/java/fi/poltsi/vempain/common/api/`              | `FileTypeEnum`, `TaskStatusEnum`                                                                                                                                                          |
 | `api/src/main/java/fi/poltsi/vempain/common/api/request/`      | `LocationRequest`, `TagRequest`, `CopyrightRequest`                                                                                                                                       |
 | `api/src/main/java/fi/poltsi/vempain/common/api/response/`     | `LocationResponse`, `TaskAcceptedResponse`, `TaskProgressResponse`                                                                                                                        |
 | `api/src/main/java/fi/poltsi/vempain/common/rest/`             | `TaskAPI` (`/tasks`: list, get, cancel, dismiss)                                                                                                                                          |
 | `core/src/main/java/fi/poltsi/vempain/common/task/`            | `TaskRunner`, `TaskProgressStore`, `TaskProgress`, `TaskController`, `TaskCommandExecutor` (interface), `TaskWork`, `Compensation`, `TaskCancelledException`                              |
+| `core/src/main/java/fi/poltsi/vempain/common/task/`            | `TaskMetrics` (the `vempain.tasks.*` meters)                                                                                                                                              |
+| `core/src/main/java/fi/poltsi/vempain/common/metrics/`         | `MetricsExportEnvironmentPostProcessor` (`vempain.metrics.*` -> OTLP push export; `META-INF/spring.factories`)                                                                            |
 | `core/src/main/java/fi/poltsi/vempain/common/task/entity/`     | `TaskRecordEntity`, `TaskCompensationEntity` (tables `task_record`, `task_compensation`)                                                                                                  |
 | `core/src/main/java/fi/poltsi/vempain/common/task/repository/` | `TaskRecordRepository` (lease based `claimNext`), `TaskCompensationRepository`                                                                                                            |
 | `core/src/main/resources/db/task/task_tables.sql`              | Reference schema; copied into each consumer's own Flyway tree                                                                                                                             |
@@ -52,6 +54,31 @@
   `/tasks/**` for authenticated users in the host `WebSecurityConfig`; provide exactly one `TaskCommandExecutor` bean and a host
   `TaskTypeEnum` documenting the task types and result payloads. The file and admin backends are the two reference hosts.
 - The facility is type agnostic: task types are strings, payloads and results are JSON. Never add a backend specific type to `core`.
+- `TaskMetrics` (created by `TaskRunner` from the host's `MeterRegistry`, or the global registry outside Spring) reports
+  `vempain.tasks.submitted{type,durable}`, `vempain.tasks.duration{type,status}`, the `vempain.tasks.active` and `vempain.tasks.queued`
+  gauges (`TaskProgressStore.countQueued`), `vempain.tasks.steps.failed{type}`, `vempain.tasks.steps.reverted{type}` and
+  `vempain.tasks.compensations.failed{type}`. Tags are the task type and status only. Unit tests that assert meters build the runner with
+  `new TaskRunner(store, Runnable::run, new SimpleMeterRegistry())` (`TaskMetricsUTC`).
+- A task body runs with `taskId`/`taskType` in the MDC and, when the host traces (Micrometer `Tracer` bean present), in a span of its
+  own named `task <type>` with tags `task.type`/`task.id` (`TaskRunner.traced`); the submit logs the task id inside the request's
+  trace, which is how a request and the task it started are joined in Grafana. Tests use `new TaskRunner(store, Runnable::run,
+  new SimpleMeterRegistry(), new SimpleTracer())` (`TaskRunnerTracingUTC`, `micrometer-tracing-test`).
+
+## Metrics export (core)
+
+- Every backend pushes its Micrometer meters over OTLP/HTTP to the Prometheus receiver of the monitoring environment (`vempain-cluster/monitoring`); nothing is
+  scraped, because the backends' management port is routed publicly through Traefik.
+- `fi.poltsi.vempain.common.metrics.MetricsExportEnvironmentPostProcessor` (registered in `META-INF/spring.factories`) maps the host's
+  `vempain.metrics.*` properties (`enabled`, `url`, `username`, `password`, `certificate`, `step`, filled from the `VEMPAIN_METRICS_*`
+  environment variables) to `management.otlp.metrics.export.url|step|headers.Authorization|ssl.bundle` and a PEM trust store bundle
+  `spring.ssl.bundle.pem.vempain-metrics` for the self-signed certificate. With `vempain.metrics.enabled=false` (the default) it adds
+  nothing, so local runs and tests never export. The hosts add `io.micrometer:micrometer-registry-otlp` and declare the properties; the
+  website backend keeps its own copy of the class (it does not depend on this library). Changing the property names is a contract change
+  for three backends and the cluster compose files.
+- The same class maps `vempain.tracing.*` (`enabled`, `url`, `sampling`, from `VEMPAIN_TRACING_*`) to `management.tracing.enabled`,
+  `management.tracing.sampling.probability` and `management.opentelemetry.tracing.export.otlp.endpoint|headers.Authorization|ssl.bundle`,
+  reusing the metrics credentials and certificate: the Tempo receiver of the monitoring environment sits behind the same basic auth and
+  self-signed certificate. The hosts add `spring-boot-starter-opentelemetry`; traces propagate as W3C `traceparent`.
 
 ## Conventions
 
@@ -64,7 +91,7 @@
   validate the schema at startup.
 - Adding or renaming a field is a contract change for two backends and three frontends: update the JTC here, release, bump
   `vempain-common` in the consumers' `gradle/libs.versions.toml`, and adjust their TypeScript models in the same change set.
-- Java is tab-indented with a 160-character line limit (`.editorconfig`); do not mass-reformat.
+- Java is indented with 4 spaces and has a 160-character line limit (`.editorconfig`, `.config/eclipse-formatter.xml`); do not mass-reformat.
 - Test suffixes are shared with the other Vempain Java repos: `UTC` (unit), `JTC` (JSON contract); `ITC`/`CTC` are not expected here because
   there is no Spring context, the hosts cover the HTTP side with their own `TaskControllerCTC`/`TaskCTC`. Helper classes carry no suffix.
 - Java, Spring Boot and Gradle versions in `gradle/libs.versions.toml` and the wrapper must stay identical to the consuming backends and

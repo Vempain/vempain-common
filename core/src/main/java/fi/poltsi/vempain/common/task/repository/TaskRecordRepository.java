@@ -65,4 +65,9 @@ public interface TaskRecordRepository extends JpaRepository<TaskRecordEntity, St
             )
             and t.finishedAt < :cutoff""")
     int deleteFinishedBefore(@Param("cutoff") Instant cutoff);
+
+    /**
+     * Tasks waiting for a worker; read by the {@code vempain.tasks.queued} gauge.
+     */
+    long countByStatus(fi.poltsi.vempain.common.api.TaskStatusEnum status);
 }
