@@ -64,7 +64,8 @@ class TaskRunnerLifecycleUTC {
             .thenReturn(Optional.of(account));
         var progress = TaskProgress.unmanaged("t1", "SCAN", "Scan", 42L, 1, "{}");
         lenient().when(store.claimNext(any()))
-            .thenReturn(Optional.of(progress), Optional.empty());
+            .thenReturn(Optional.of(progress))
+            .thenReturn(Optional.empty());
         var seenPrincipal = new AtomicReference<Object>();
         lenient().when(commandExecutor.execute(progress))
             .thenAnswer(invocation -> {
@@ -146,7 +147,8 @@ class TaskRunnerLifecycleUTC {
         var pending = new TaskCompensationEntity();
         pending.setId(2L);
         pending.setDescription("undo");
-        when(store.claimNext(any())).thenReturn(Optional.of(progress), Optional.empty());
+        when(store.claimNext(any())).thenReturn(Optional.of(progress))
+            .thenReturn(Optional.empty());
         when(store.durableCompensations(progress)).thenReturn(List.of(done, pending));
         when(commandExecutor.execute(progress)).thenThrow(new TaskCancelledException());
 
@@ -168,7 +170,8 @@ class TaskRunnerLifecycleUTC {
         first.setId(1L);
         var second = new TaskCompensationEntity();
         second.setId(2L);
-        when(store.claimNext(any())).thenReturn(Optional.of(progress), Optional.empty());
+        when(store.claimNext(any())).thenReturn(Optional.of(progress))
+            .thenReturn(Optional.empty());
         when(store.durableCompensations(progress)).thenReturn(List.of(first, second));
         when(commandExecutor.execute(progress)).thenThrow(new TaskCancelledException());
         doThrow(new IllegalStateException("gone")).when(commandExecutor)

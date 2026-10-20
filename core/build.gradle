@@ -39,6 +39,11 @@ tasks.withType(Javadoc).configureEach {
 	options.addStringOption('Xdoclint:all,-missing', '-quiet')
 }
 
+// Report deprecated API use and unchecked operations with their location instead of javac's "recompile with -Xlint" note
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
+}
+
 dependencies {
 	api project(':api')
 	api "fi.poltsi.vempain:vempain-auth-api:${libs.versions.vempain.auth.get()}"

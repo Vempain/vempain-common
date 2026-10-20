@@ -33,6 +33,11 @@ tasks.withType(Javadoc).configureEach {
 	options.addStringOption('Xdoclint:all,-missing', '-quiet') // keep other checks, ignore missing docs
 }
 
+// Report deprecated API use and unchecked operations with their location instead of javac's "recompile with -Xlint" note
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
+}
+
 dependencies {
 	// Jackson 3 naming annotations and Jakarta Validation constraints are part of the published DTO contract
 	api "org.springframework.boot:spring-boot-starter-jackson:${libs.versions.spring.boot.get()}"
