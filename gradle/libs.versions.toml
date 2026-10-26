@@ -1,7 +1,7 @@
 [versions]
 release = "0.0.1-SNAPSHOT"
 java = "25"
-spring-boot = "4.1.1"
+spring-boot = "4.1.2"
 micrometer = "1.17.1"
 micrometerTracing = "1.7.1"
 freefair-lombok = "9.8.0"
