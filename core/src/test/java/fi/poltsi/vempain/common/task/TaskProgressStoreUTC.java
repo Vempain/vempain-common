@@ -76,6 +76,51 @@ class TaskProgressStoreUTC {
     }
 
     @Test
+    void remainingTimeIsExtrapolatedFromThePaceOfTheCompletedSteps() {
+        var task = store.create("A", "estimate", 1L, 4);
+        assertThat(task.estimatedRemainingSeconds()).isNull();
+
+        task.start();
+        var tenSecondsIn = task.getStartedAt()
+            .plusSeconds(10);
+        assertThat(task.estimatedRemainingSeconds(tenSecondsIn)).isNull();
+
+        task.advance("one");
+        assertThat(task.estimatedRemainingSeconds(tenSecondsIn)).isEqualTo(30L);
+        task.advanceFailed("two failed");
+        assertThat(task.estimatedRemainingSeconds(tenSecondsIn)).isEqualTo(10L);
+        assertThat(task.estimatedRemainingSeconds(task.getStartedAt()
+            .plusMillis(10_500))).isEqualTo(11L);
+        assertThat(task.toResponse()
+            .getEstimatedRemainingSeconds()).isNotNull();
+
+        task.requestCancelLocal();
+        assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.CANCELLING);
+        assertThat(task.estimatedRemainingSeconds(tenSecondsIn)).isNull();
+    }
+
+    @Test
+    void remainingTimeIsUnknownWithoutStepsAndOnceFinished() {
+        var task = store.create("A", "unknown", 1L, 0);
+        task.start();
+        task.advance("a");
+        var fiveSecondsIn = task.getStartedAt()
+            .plusSeconds(5);
+        assertThat(task.estimatedRemainingSeconds(fiveSecondsIn)).isNull();
+
+        task.setTotalSteps(2);
+        assertThat(task.estimatedRemainingSeconds(fiveSecondsIn)).isEqualTo(5L);
+        task.advance("b");
+        task.advance("c");
+        assertThat(task.estimatedRemainingSeconds(fiveSecondsIn)).isZero();
+
+        task.complete("done");
+        assertThat(task.estimatedRemainingSeconds()).isNull();
+        assertThat(task.toResponse()
+            .getEstimatedRemainingSeconds()).isNull();
+    }
+
+    @Test
     void percentIsZeroWithoutKnownStepsAndNeverReachesHundredWhileRunning() {
         var task = store.create("A", "unknown", 1L, 0);
         task.start();

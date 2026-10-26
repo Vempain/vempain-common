@@ -1,6 +1,7 @@
 -- Reference schema of the shared task facility (fi.poltsi.vempain.common.task). Copy this file into the Flyway migration tree
 -- of the consuming service with the next free version of that service (the file backend has it as V1009__durable_tasks.sql,
--- the admin backend as db/migration/admin/V1004__task_tables.sql). The JPA entities validate the schema at startup.
+-- the admin backend as db/migration/admin/V1004__task_tables.sql). The JPA entities validate the schema at startup. Hosts created before
+-- the lane columns existed add them with task_lanes.sql.
 CREATE TABLE task_record
 (
 	task_id          VARCHAR(36) PRIMARY KEY,
@@ -22,11 +23,15 @@ CREATE TABLE task_record
 	cancel_requested BOOLEAN                  NOT NULL DEFAULT FALSE,
 	worker_id        VARCHAR(100),
 	lease_until      TIMESTAMP WITH TIME ZONE,
-	heartbeat_at     TIMESTAMP WITH TIME ZONE
+    heartbeat_at TIMESTAMP WITH TIME ZONE,
+    -- Concurrency lane of the task (TaskLane): at most lane_limit tasks of a lane run at the same time; both null for unlimited tasks
+    lane         VARCHAR(80),
+    lane_limit   INTEGER
 );
 
 CREATE INDEX task_record_owner_created_idx ON task_record (owner_id, created_at DESC);
 CREATE INDEX task_record_claim_idx ON task_record (status, lease_until, created_at);
+CREATE INDEX task_record_lane_idx ON task_record (lane, status);
 
 CREATE TABLE task_compensation
 (

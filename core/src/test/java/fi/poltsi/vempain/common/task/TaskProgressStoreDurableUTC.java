@@ -61,6 +61,38 @@ class TaskProgressStoreDurableUTC {
     }
 
     @Test
+    void storesTheLaneOfATaskAndRestoresItFromTheRecord() {
+        var lane = TaskLane.of("site-sftp", 2);
+
+        var created = store.create("PUBLISH_GALLERY", "Publish", 7L, 3, java.util.Map.of("gallery_ids", List.of(1L)), lane);
+
+        assertThat(created.getLane()).isEqualTo(lane);
+        var persisted = capturedRecord();
+        assertThat(persisted.getLane()).isEqualTo("site-sftp");
+        assertThat(persisted.getLaneLimit()).isEqualTo(2);
+
+        // A task without a lane stores nulls
+        reset(repository);
+        assertThat(store.create("SCAN", "Scan", 7L, 1, java.util.Map.of())
+            .getLane()).isNull();
+        var unlimited = capturedRecord();
+        assertThat(unlimited.getLane()).isNull();
+        assertThat(unlimited.getLaneLimit()).isNull();
+
+        // A claimed record brings its lane back; a lane without a stored limit runs one at a time
+        persisted.setStatus(TaskStatusEnum.RUNNING);
+        when(repository.claimNext("worker-a", 60L)).thenReturn(persisted);
+        assertThat(store.claimNext("worker-a")
+            .orElseThrow()
+            .getLane()).isEqualTo(lane);
+        persisted.setLaneLimit(null);
+        when(repository.findById(persisted.getId())).thenReturn(Optional.of(persisted));
+        assertThat(store.find(persisted.getId())
+            .orElseThrow()
+            .getLane()).isEqualTo(TaskLane.of("site-sftp", 1));
+    }
+
+    @Test
     void claimsRefreshesCancelsAndHeartbeatsTasks() {
         var entity = entity("task-1", 7L, TaskStatusEnum.QUEUED);
         entity.setPayload("{\"value\":1}");
@@ -70,6 +102,12 @@ class TaskProgressStoreDurableUTC {
 
         assertThat(claimed.getId()).isEqualTo("task-1");
         assertThat(claimed.getWorkerId()).isEqualTo("worker-a");
+        // The lane limits are counted inside the claim, so the claim is serialized with the advisory lock taken first
+        var order = org.mockito.Mockito.inOrder(repository);
+        order.verify(repository)
+            .lockClaims(TaskRecordRepository.CLAIM_LOCK_KEY);
+        order.verify(repository)
+            .claimNext("worker-a", 60L);
         when(repository.requestCancel("task-1")).thenReturn(1);
         assertThat(store.requestCancel(claimed)).isTrue();
         assertThat(claimed.isCancelRequested()).isTrue();

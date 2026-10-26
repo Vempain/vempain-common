@@ -1,5 +1,6 @@
 package fi.poltsi.vempain.common.task;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -51,6 +52,8 @@ public class TaskProgress {
     private transient TaskProgressStore store;
     private String payload;
     private String workerId;
+    /** The lane the task waits in and runs in, null when the task is not limited; set at submit time. */
+    private TaskLane lane;
 
     TaskProgress(String id, String type, String title, Long ownerId, long totalSteps) {
         this.id = id;
@@ -58,6 +61,10 @@ public class TaskProgress {
         this.title = title;
         this.ownerId = ownerId;
         this.totalSteps.set(Math.max(0, totalSteps));
+    }
+
+    void setLane(TaskLane lane) {
+        this.lane = lane;
     }
 
     /**
@@ -89,6 +96,7 @@ public class TaskProgress {
         startedAt = source.startedAt;
         finishedAt = source.finishedAt;
         createdAt = source.createdAt;
+        lane = source.lane;
         attach(store, source.payload, source.workerId);
     }
 
@@ -291,6 +299,33 @@ public class TaskProgress {
         return (int) Math.min(99, Math.round(100.0 * completedSteps.get() / total));
     }
 
+    /**
+     * Estimated number of seconds the task still needs, or null when there is nothing to base an estimate on. The estimate extrapolates the average pace of the
+     * steps completed so far over the remaining steps ({@code elapsed * remaining / completed}, rounded up to whole seconds). It is only available while the
+     * task is RUNNING with a known step count and at least one completed step; a queued, cancelling or finished task has none.
+     */
+    public Long estimatedRemainingSeconds() {
+        return estimatedRemainingSeconds(Instant.now());
+    }
+
+    Long estimatedRemainingSeconds(Instant now) {
+        var started = startedAt;
+        if (status != TaskStatusEnum.RUNNING
+            || started == null) {
+            return null;
+        }
+        long total = totalSteps.get();
+        long completed = completedSteps.get();
+        if (total <= 0
+            || completed <= 0) {
+            return null;
+        }
+        long remaining = Math.max(0, total - completed);
+        long elapsedMillis = Math.max(0, Duration.between(started, now)
+            .toMillis());
+        return (long) Math.ceil(elapsedMillis * (double) remaining / completed / 1000.0);
+    }
+
     public TaskAcceptedResponse toAcceptedResponse() {
         return TaskAcceptedResponse.builder()
             .taskId(id)
@@ -311,6 +346,7 @@ public class TaskProgress {
             .completedSteps(completedSteps.get())
             .failedSteps(failedSteps.get())
             .percent(percent())
+            .estimatedRemainingSeconds(estimatedRemainingSeconds())
             .cancelRequested(cancelRequested.get())
             .revertedSteps(revertedSteps.get())
             .message(message)

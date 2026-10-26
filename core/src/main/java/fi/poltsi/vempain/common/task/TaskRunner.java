@@ -107,7 +107,15 @@ public class TaskRunner {
      * Creates a PostgreSQL-backed task. Payload must be JSON-serializable.
      */
     public TaskProgress submit(String type, String title, long totalSteps, Object payload) {
-        var progress = store.create(type, title, currentUserId(), totalSteps, payload);
+        return submit(type, title, totalSteps, payload, null);
+    }
+
+    /**
+     * @param lane the lane whose concurrency limit the task waits for, or null for a task that runs as soon as a worker is free
+     */
+    public TaskProgress submit(String type, String title, long totalSteps, Object payload, TaskLane lane) {
+        var progress = lane == null ? store.create(type, title, currentUserId(), totalSteps, payload)
+                : store.create(type, title, currentUserId(), totalSteps, payload, lane);
         metrics.submitted(type, true);
         // Logged inside the trace of the submitting request: the task itself runs later in a trace of its own, the task id joins the two
         log.info("Submitted background task {} ({}): {}", progress.getId(), type, title);
@@ -155,7 +163,14 @@ public class TaskRunner {
      * Production uses the durable payload. The fallback exists solely for lightweight unit tests that construct a runner without a JPA repository.
      */
     public TaskProgress submitDurable(String type, String title, long totalSteps, Object payload, TaskWork<?> localFallback) {
-        return store.isDurable() ? submit(type, title, totalSteps, payload) : submit(type, title, totalSteps, localFallback);
+        return submitDurable(type, title, totalSteps, payload, null, localFallback);
+    }
+
+    /**
+     * @param lane the lane whose concurrency limit the durable task waits for (see {@link TaskLane}), or null; the local fallback ignores it
+     */
+    public TaskProgress submitDurable(String type, String title, long totalSteps, Object payload, TaskLane lane, TaskWork<?> localFallback) {
+        return store.isDurable() ? submit(type, title, totalSteps, payload, lane) : submit(type, title, totalSteps, localFallback);
     }
 
     private void schedulePollingAfterCommit(TaskProgress progress) {

@@ -106,6 +106,24 @@ class TaskRunnerLifecycleUTC {
     }
 
     @Test
+    void durableSubmitWithALaneStoresTheLaneWithTheTask() {
+        var runner = new TaskRunner(store, Runnable::run);
+        var progress = TaskProgress.unmanaged("t3", "PUBLISH", "Publish", null, 1, "{}");
+        var lane = TaskLane.of("site-sftp", 1);
+        when(store.isDurable()).thenReturn(true);
+        when(store.create("PUBLISH", "Publish", null, 1, Map.of("k", "v"), lane)).thenReturn(progress);
+
+        var submitted = runner.submitDurable("PUBLISH", "Publish", 1, Map.of("k", "v"), lane, p -> null);
+
+        assertThat(submitted).isSameAs(progress);
+        // Without a durable store the fallback runs locally and the lane plays no part
+        when(store.isDurable()).thenReturn(false);
+        var local = TaskProgress.unmanaged("t4", "PUBLISH", "Publish", null, 1, "{}");
+        when(store.create("PUBLISH", "Publish", null, 1)).thenReturn(local);
+        assertThat(runner.submitDurable("PUBLISH", "Publish", 1, Map.of("k", "v"), lane, p -> "done")).isSameAs(local);
+    }
+
+    @Test
     void durableSubmitInsideATransactionPollsAfterCommitAndDropsTheTaskOnRollback() {
         var queued = new java.util.ArrayList<Runnable>();
         var runner = new TaskRunner(store, queued::add);
