@@ -57,6 +57,9 @@ dependencies {
     // Background tasks run in a span of their own when the host traces (the host brings the OpenTelemetry bridge)
     implementation "io.micrometer:micrometer-tracing:${libs.versions.micrometerTracing.get()}"
 	implementation "io.swagger.core.v3:swagger-annotations:${libs.versions.swagger.get()}"
+    // The shared ExifTool runner (fi.poltsi.vempain.common.metadata): persistent exiftool processes and the JSON the backends parse
+    implementation "com.github.mjeanroy:exiftool-lib:${libs.versions.exiftool.lib.get()}"
+    api "org.json:json:${libs.versions.json.get()}"
 	testImplementation "org.springframework.boot:spring-boot-starter-test:${libs.versions.spring.boot.get()}"
 	testImplementation "org.mockito:mockito-junit-jupiter:${libs.versions.mockito.get()}"
     testImplementation "io.micrometer:micrometer-tracing-test:${libs.versions.micrometerTracing.get()}"

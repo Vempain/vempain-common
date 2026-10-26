@@ -39,6 +39,9 @@ public class TaskProgressResponse {
     private long failedSteps;
     @Schema(description = "Completion percentage 0..100; 100 once the task has finished", example = "40")
     private int percent;
+    @Schema(description = "Estimated number of seconds until the task finishes, extrapolated from the average pace of the completed steps; absent while "
+            + "the task is queued, before its first step has completed, while it is cancelling and once it has finished", example = "95")
+    private Long estimatedRemainingSeconds;
     @Schema(description = "Whether the owner asked for the task to be cancelled", example = "false")
     private boolean cancelRequested;
     @Schema(description = "Number of changes that were reverted when the task was cancelled or failed", example = "3")

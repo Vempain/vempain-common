@@ -15,17 +15,36 @@ import fi.poltsi.vempain.common.task.entity.TaskRecordEntity;
 @Repository
 public interface TaskRecordRepository extends JpaRepository<TaskRecordEntity, String> {
 
+    /** Advisory lock key of {@link #lockClaims(long)}; one value for every host, the lock is per database. */
+    long CLAIM_LOCK_KEY = 0x5645_4D50_4149_4E01L;
+
     /**
-     * Selects and claims one task while holding the row lock. Expired leases are eligible again; the worker id is a fencing token.
+     * Takes a transaction level advisory lock so that only one claim runs at a time in the database: {@link #claimNext} counts the running tasks of a lane, and
+     * two claims counting at the same time could both admit a task into a full lane. Call it in the transaction of the claim.
+     */
+    @Transactional
+    @Query(value = "SELECT pg_advisory_xact_lock(:key) IS NULL", nativeQuery = true)
+    boolean lockClaims(@Param("key") long key);
+
+    /**
+     * Selects and claims one task while holding the row lock. Expired leases are eligible again; the worker id is a fencing token. A task in a lane is only
+     * claimed while fewer tasks of that lane than its limit are running (held by a live lease); older queued tasks of a full lane do not block the tasks behind
+     * them that are in no lane or in another lane.
      */
     @Transactional
     @Query(value = """
             WITH candidate AS (
-              SELECT task_id FROM task_record
-              WHERE status = 'QUEUED'
-                 OR (status IN ('RUNNING','CANCELLING') AND lease_until < CURRENT_TIMESTAMP)
-              ORDER BY created_at
-              FOR UPDATE SKIP LOCKED
+              SELECT t.task_id FROM task_record t
+              WHERE (t.status = 'QUEUED'
+                     OR (t.status IN ('RUNNING','CANCELLING') AND t.lease_until < CURRENT_TIMESTAMP))
+                AND (t.lane IS NULL
+                     OR (SELECT COUNT(*) FROM task_record r
+                          WHERE r.lane = t.lane
+                            AND r.task_id <> t.task_id
+                            AND r.status IN ('RUNNING','CANCELLING')
+                            AND r.lease_until >= CURRENT_TIMESTAMP) < COALESCE(t.lane_limit, 1))
+              ORDER BY t.created_at
+              FOR UPDATE OF t SKIP LOCKED
               LIMIT 1
             )
             UPDATE task_record t

@@ -109,8 +109,17 @@ public class TaskProgressStore {
 
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public TaskProgress create(String type, String title, Long ownerId, long totalSteps, Object payload) {
+        return create(type, title, ownerId, totalSteps, payload, null);
+    }
+
+    /**
+     * @param lane the lane whose concurrency limit the task waits for, or null for a task that runs as soon as a worker is free
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public TaskProgress create(String type, String title, Long ownerId, long totalSteps, Object payload, TaskLane lane) {
         var progress = new TaskProgress(UUID.randomUUID()
             .toString(), type, title, ownerId, totalSteps);
+        progress.setLane(lane);
         progress.attach(this, serialize(payload), null);
         localTasks.put(progress.getId(), progress);
         if (repository != null) {
@@ -203,6 +212,8 @@ public class TaskProgressStore {
         if (repository == null) {
             return Optional.empty();
         }
+        // One claim at a time across every worker and instance: the lane limits are counted inside the claim and must not race
+        repository.lockClaims(TaskRecordRepository.CLAIM_LOCK_KEY);
         return Optional.ofNullable(repository.claimNext(workerId, leaseSeconds))
             .map(entity -> {
                 var progress = fromEntity(entity);
@@ -326,6 +337,12 @@ public class TaskProgressStore {
         entity.setFinishedAt(progress.getFinishedAt());
         entity.setCancelRequested(progress.isCancelRequested());
         entity.setWorkerId(progress.getWorkerId());
+        entity.setLane(progress.getLane() == null ? null
+                : progress.getLane()
+                    .name());
+        entity.setLaneLimit(progress.getLane() == null ? null
+                : progress.getLane()
+                    .limit());
         entity.setHeartbeatAt(Instant.now());
         if (progress.getStatus()
             .isActive()) {
@@ -348,6 +365,9 @@ public class TaskProgressStore {
         progress.startedAt = entity.getStartedAt();
         progress.finishedAt = entity.getFinishedAt();
         progress.createdAtOverride(entity.getCreatedAt());
+        if (entity.getLane() != null) {
+            progress.setLane(TaskLane.of(entity.getLane(), entity.getLaneLimit() == null ? 1 : entity.getLaneLimit()));
+        }
         progress.attach(this, entity.getPayload(), entity.getWorkerId());
         return progress;
     }

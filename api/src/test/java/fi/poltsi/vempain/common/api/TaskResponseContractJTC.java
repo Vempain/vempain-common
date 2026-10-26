@@ -58,12 +58,38 @@ class TaskResponseContractJTC {
         var json = objectMapper.readTree(objectMapper.writeValueAsString(progress));
 
         assertThat(json.propertyNames()).containsExactlyInAnyOrder("task_id", "type", "title", "status", "total_steps", "completed_steps", "failed_steps",
-                "percent", "cancel_requested", "reverted_steps", "message", "error_message", "result", "created_at", "started_at", "finished_at");
+                "percent", "estimated_remaining_seconds", "cancel_requested", "reverted_steps", "message", "error_message", "result", "created_at",
+                "started_at", "finished_at");
+        assertThat(json.get("estimated_remaining_seconds")
+            .isNull()).isTrue();
         assertThat(json.get("result")
             .get("identifier")
             .asString()).isEqualTo("music_library");
         assertThat(json.get("created_at")
             .asString()).isEqualTo("2026-10-06T10:00:00Z");
+    }
+
+    @Test
+    void progressResponseCarriesTheRemainingTimeEstimateOfARunningTask() throws Exception {
+        var progress = TaskProgressResponse.builder()
+            .taskId("task-1")
+            .type("PUBLISH_PAGE")
+            .title("Publish page")
+            .status(TaskStatusEnum.RUNNING)
+            .totalSteps(4)
+            .completedSteps(1)
+            .percent(25)
+            .estimatedRemainingSeconds(95L)
+            .createdAt(Instant.parse("2026-10-06T10:00:00Z"))
+            .startedAt(Instant.parse("2026-10-06T10:00:01Z"))
+            .build();
+
+        var json = objectMapper.readTree(objectMapper.writeValueAsString(progress));
+
+        assertThat(json.get("estimated_remaining_seconds")
+            .asLong()).isEqualTo(95L);
+        assertThat(objectMapper.readValue(json.toString(), TaskProgressResponse.class)
+            .getEstimatedRemainingSeconds()).isEqualTo(95L);
     }
 
     @Test

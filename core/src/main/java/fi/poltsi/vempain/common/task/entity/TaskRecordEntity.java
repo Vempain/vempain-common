@@ -64,4 +64,10 @@ public class TaskRecordEntity {
     private String workerId;
     private Instant leaseUntil;
     private Instant heartbeatAt;
+    /** The lane the task runs in, null for tasks without a concurrency limit; see {@code TaskLane}. */
+    @Column(length = 80)
+    private String lane;
+    /** How many tasks of the lane may run at the same time, as configured when the task was submitted. */
+    @Column(name = "lane_limit")
+    private Integer laneLimit;
 }
