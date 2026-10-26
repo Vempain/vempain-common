@@ -45,7 +45,9 @@ class ExifToolServiceITC {
 
     @AfterEach
     void tearDown() {
-        service.close();
+        if (service != null) {
+            service.close();
+        }
     }
 
     private File jpeg(String name) throws IOException {
