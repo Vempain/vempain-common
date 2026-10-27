@@ -77,7 +77,7 @@ class MetricsExportEnvironmentPostProcessorUTC {
 
         processor.postProcessEnvironment(environment, new SpringApplication());
 
-        assertThat(environment.getProperty("management.tracing.enabled", Boolean.class)).isTrue();
+        assertThat(environment.getProperty("management.tracing.export.enabled", Boolean.class)).isTrue();
         assertThat(environment.getProperty("management.tracing.sampling.probability")).isEqualTo("0.25");
         assertThat(environment.getProperty("management.opentelemetry.tracing.export.otlp.endpoint")).isEqualTo("https://grafana.intra.example/tempo/v1/traces");
         assertThat(environment.getProperty("management.opentelemetry.tracing.export.otlp.headers.Authorization"))
@@ -98,7 +98,7 @@ class MetricsExportEnvironmentPostProcessorUTC {
         processor.postProcessEnvironment(environment, new SpringApplication());
 
         assertThat(environment.getProperty("management.otlp.metrics.export.enabled", Boolean.class)).isTrue();
-        assertThat(environment.getProperty("management.tracing.enabled")).isNull();
+        assertThat(environment.getProperty("management.tracing.export.enabled")).isNull();
         assertThat(environment.getProperty("management.opentelemetry.tracing.export.otlp.endpoint")).isNull();
     }
 

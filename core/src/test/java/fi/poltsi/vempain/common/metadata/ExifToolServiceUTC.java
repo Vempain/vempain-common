@@ -53,7 +53,7 @@ class ExifToolServiceUTC {
 
         assertThat(metadata.getJSONObject("XMP-dc")
             .getString("Creator")).isEqualTo("Jane");
-        var arguments = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<String>> arguments = ArgumentCaptor.captor();
         verify(exifTool).getRawExifToolOutput(arguments.capture());
         assertThat(arguments.getValue()).containsExactly("-a", "-u", "-ee", "-api", "RequestAll=3", "-g1", "-J", file.getAbsolutePath());
         assertThat(registry.get(ExifToolService.TOOL_DURATION)
@@ -81,7 +81,7 @@ class ExifToolServiceUTC {
 
         assertThat(service.readTag(new File(tempDir, "clip.mp4"), "VideoFrameRate")).isEqualTo("12");
         assertThat(service.readTag(new File(tempDir, "clip.mp4"), "Missing")).isEmpty();
-        var arguments = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<String>> arguments = ArgumentCaptor.captor();
         verify(exifTool, times(2)).getRawExifToolOutput(arguments.capture());
         assertThat(arguments.getAllValues()
             .getFirst()).startsWith("-j", "-VideoFrameRate");
@@ -113,7 +113,7 @@ class ExifToolServiceUTC {
 
         service.writeSubjects(file, List.of("alpha", " ", "beta"));
 
-        var arguments = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<String>> arguments = ArgumentCaptor.captor();
         verify(exifTool, times(2)).getRawExifToolOutput(arguments.capture());
         List<String> first = arguments.getAllValues()
             .get(0);
@@ -133,7 +133,7 @@ class ExifToolServiceUTC {
 
         service.writeSubjects(new File(tempDir, "photo.jpg"), List.of());
 
-        var arguments = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<String>> arguments = ArgumentCaptor.captor();
         verify(exifTool).getRawExifToolOutput(arguments.capture());
         assertThat(arguments.getValue()).contains("-XMP-dc:Subject=", "-XMP-lr:HierarchicalSubject=", "-XMP-lr:WeightedFlatSubject=", "-IPTC:Keywords=");
     }
@@ -161,11 +161,11 @@ class ExifToolServiceUTC {
 
         service.replaceMetadataFromJson(file, "[{\"XMP-dc:Creator\":\"Json Creator\"}]");
 
-        var arguments = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<String>> arguments = ArgumentCaptor.captor();
         verify(exifTool, times(2)).getRawExifToolOutput(arguments.capture());
         assertThat(arguments.getAllValues()
             .get(0)).containsExactly("-overwrite_original_in_place", "-all=", file.getAbsolutePath());
-        assertThat((String) arguments.getAllValues()
+        assertThat(arguments.getAllValues()
             .get(1)
             .get(1)).startsWith("-json=");
 

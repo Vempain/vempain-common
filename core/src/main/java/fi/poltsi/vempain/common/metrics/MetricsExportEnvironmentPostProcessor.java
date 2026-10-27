@@ -76,7 +76,7 @@ public class MetricsExportEnvironmentPostProcessor implements EnvironmentPostPro
         }
 
         if (tracing) {
-            properties.put("management.tracing.enabled", true);
+            properties.put("management.tracing.export.enabled", true);
             var sampling = environment.getProperty("vempain.tracing.sampling", "");
             if (!sampling.isBlank()) {
                 properties.put("management.tracing.sampling.probability", sampling.trim());

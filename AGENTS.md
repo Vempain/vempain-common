@@ -115,10 +115,15 @@
   nothing, so local runs and tests never export. The hosts add `io.micrometer:micrometer-registry-otlp` and declare the properties; the
   website backend keeps its own copy of the class (it does not depend on this library). Changing the property names is a contract change
   for three backends and the cluster compose files.
-- The same class maps `vempain.tracing.*` (`enabled`, `url`, `sampling`, from `VEMPAIN_TRACING_*`) to `management.tracing.enabled`,
-  `management.tracing.sampling.probability` and `management.opentelemetry.tracing.export.otlp.endpoint|headers.Authorization|ssl.bundle`,
-  reusing the metrics credentials and certificate: the Tempo receiver of the monitoring environment sits behind the same basic auth and
+- The same class maps `vempain.tracing.*` (`enabled`, `url`, `sampling`, from `VEMPAIN_TRACING_*`) to `management.tracing.export.enabled`
+  (`management.tracing.enabled` is deprecated since Boot 4.0), `management.tracing.sampling.probability` and
+  `management.opentelemetry.tracing.export.otlp.endpoint|headers.Authorization|ssl.bundle`, reusing the metrics credentials and certificate: the Tempo receiver
+  of the monitoring environment sits behind the same basic auth and
   self-signed certificate. The hosts add `spring-boot-starter-opentelemetry`; traces propagate as W3C `traceparent`.
+- `fi.poltsi.vempain.common.config.DeprecatedConfigurationProperties` finds configuration keys that the Spring Boot configuration metadata on
+  the class path (`META-INF/spring-configuration-metadata.json`) marks deprecated, a deprecated prefix included; the admin and file backends
+  run it over their `application*.yaml|properties` in `ConfigurationPropertyDeprecationUTC` so that a deprecated key fails the build (Boot only
+  logs them at startup). The website backend keeps its own copy, like the metrics post-processor.
 
 ## Conventions
 
@@ -144,6 +149,9 @@
 ./gradlew :api:publishToMavenLocal :core:publishToMavenLocal -PreleaseVersion=1.0.0   # local verification of a consumer before a release
 ```
 
+- javac runs with `-Xlint:deprecation -Xlint:unchecked -Werror` in every module (`tasks.withType(JavaCompile)` in the `build.gradle` files), so a deprecated
+  3rd-party API or an unchecked operation fails the compile: replace the call with the documented successor; a deliberate exception needs `@SuppressWarnings`
+  with a comment explaining why.
 - Run `./gradlew clean test` after every change and report the result. `core` needs GitHub Packages credentials for `vempain-auth-*`
   (`gpr.user`/`gpr.token` or `GITHUB_ACTOR`/`GITHUB_TOKEN`).
 - CI (`.github/workflows/ci.yaml`) delegates to `Vempain/vempain-workflows/.github/workflows/spring-boot-library.yaml`: tests on pull requests,
