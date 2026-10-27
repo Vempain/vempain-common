@@ -12,6 +12,8 @@ import org.junit.jupiter.api.io.TempDir;
 import fi.poltsi.vempain.common.config.DeprecatedConfigurationProperties.Deprecation;
 import fi.poltsi.vempain.common.config.DeprecatedConfigurationProperties.Finding;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 /**
  * The scanner reads the deprecations Boot ships in its configuration metadata and reports every key of an application file that is, or lies under, such a
  * property, so that a backend's configuration test fails the build on a deprecated key.
