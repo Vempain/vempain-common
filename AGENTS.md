@@ -53,6 +53,11 @@
   units of work so that a cancel request stops it, and registers undo actions with `registerCompensation` (in-process) or
   `registerDurableCompensation` (serialized command replayed by `TaskCommandExecutor.compensate`). On cancel or failure the runner runs
   the compensations most recent first and reports the reverted count.
+- The `error_message` of a failed task is shown as such in the task tray, so `TaskRunner.failureMessage` keeps only text a service wrote
+  for the user: the exception message (the reason of a `ResponseStatusException`), while a failure with a `DataAccessException`,
+  `TransactionException`, `PersistenceException` or `SQLException` anywhere in its cause chain is reported as
+  `TaskRunner.INTERNAL_ERROR_MESSAGE` (the driver text names tables, constraints and statements, which belong in the server log, where
+  the runner logs every failure with its stack trace). Tests: `TaskRunnerUTC`.
 - Every progress snapshot (`TaskProgress.toResponse()`) carries `estimated_remaining_seconds`: the average pace of the completed steps
   extrapolated over the remaining ones (`elapsed * remaining / completed`, rounded up; `TaskProgress.estimatedRemainingSeconds`). It is null
   while the task is queued, before its first completed step, without a known step count, while cancelling and once finished; the tray of
@@ -165,3 +170,15 @@
 
 Tags are metadata, not ACL-bearing resources. Tag entities have no ACL information, so tag list, search, and mutation endpoints must not perform ACL checks on
 tags. ACL checks apply only to resources that explicitly carry an ACL.
+
+## Gradle configuration cache
+
+`org.gradle.configuration-cache=true` in `gradle.properties` stores the configured task graph and reuses it when the build inputs are
+unchanged ("Reusing configuration cache"), so the build scripts must stay compatible with it: no `Project`, `Configuration` or other live
+build model inside a task action (`doLast`/`doFirst`), only task inputs, properties and providers captured while configuring (see
+`verifyBuildConstraints` in `gradle/team-convention.gradle`, which collects the `rootComponent` providers of the classpaths and walks the
+resolved graphs at execution instead of resolving configurations there). Gradle reports a violation as "problem was found storing the
+configuration cache" and fails the build; `--no-configuration-cache` only hides it for one run, fix the script instead. The cache lives in
+`.gradle/configuration-cache/` (ignored). Because the cache also runs the tasks of one invocation in parallel, `gradle/team-convention.gradle`
+orders every Spotless task after every `clean` task (Spotless closes its formatter classloaders in `clean`, diffplug/spotless#3067);
+without that `./gradlew clean build` intermittently fails `spotlessFlexmarkCheck` with a `LINE_UNDEFINED flexmark-java(NoClassDefFoundError)` lint.
