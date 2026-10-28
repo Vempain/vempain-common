@@ -1,16 +1,23 @@
 package fi.poltsi.vempain.common.task;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
+import jakarta.persistence.PersistenceException;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import fi.poltsi.vempain.auth.service.UserDetailsImpl;
 import fi.poltsi.vempain.common.api.TaskStatusEnum;
@@ -74,6 +81,36 @@ class TaskRunnerUTC {
             .run();
 
         assertThat(task.getErrorMessage()).isEqualTo("NullPointerException");
+    }
+
+    @Test
+    void databaseFailuresAreReportedAsAnInternalErrorWithoutTheStatement() {
+        // What Spring Data raises on a violated constraint: the statement and the constraint are in the message and the cause chain
+        var task = runner.submit("A", "title", 0, progress -> {
+            throw new DataIntegrityViolationException("could not execute statement [ERROR: duplicate key value violates unique constraint \"ux_x\"]",
+                    new SQLException("duplicate key value violates unique constraint \"ux_x\"", "23505"));
+        });
+        queued.get(0)
+            .run();
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.FAILED);
+        assertThat(task.getErrorMessage()).isEqualTo(TaskRunner.INTERNAL_ERROR_MESSAGE);
+        assertThat(task.getErrorMessage()).doesNotContain("ux_x");
+    }
+
+    @Test
+    void failureMessageHidesPersistenceTransactionAndSqlCausesAndKeepsTheReasonOfAStatusException() {
+        assertThat(TaskRunner.failureMessage(new PersistenceException("entity manager is closed"))).isEqualTo(TaskRunner.INTERNAL_ERROR_MESSAGE);
+        assertThat(TaskRunner.failureMessage(new CannotCreateTransactionException("Could not open JPA EntityManager")))
+            .isEqualTo(TaskRunner.INTERNAL_ERROR_MESSAGE);
+        // The database failure may be wrapped by the service
+        assertThat(TaskRunner.failureMessage(new IllegalStateException("publish failed", new SQLException("connection reset", "08006"))))
+            .isEqualTo(TaskRunner.INTERNAL_ERROR_MESSAGE);
+        // Failures raised by the service keep their own text; a status exception is reported by its reason, not by "500 INTERNAL_SERVER_ERROR ..."
+        assertThat(TaskRunner.failureMessage(new IllegalArgumentException("Gallery 5 has no files"))).isEqualTo("Gallery 5 has no files");
+        assertThat(TaskRunner.failureMessage(new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to transfer files to site")))
+            .isEqualTo("Failed to transfer files to site");
+        assertThat(TaskRunner.failureMessage(new ResponseStatusException(HttpStatus.BAD_GATEWAY))).isEqualTo("502 BAD_GATEWAY");
     }
 
     @Test

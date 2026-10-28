@@ -1,5 +1,6 @@
 package fi.poltsi.vempain.common.task;
 
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -7,19 +8,23 @@ import java.util.concurrent.Executor;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import jakarta.persistence.PersistenceException;
 
 import org.slf4j.MDC;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import fi.poltsi.vempain.auth.repository.UserAccountRepository;
 import fi.poltsi.vempain.auth.service.UserDetailsImpl;
@@ -45,6 +50,10 @@ public class TaskRunner {
         .toString();
     private final int workerCount;
     private final Map<String, TaskProgress> active = new ConcurrentHashMap<>();
+    /**
+     * What the user is told when a task failed in the database layer; the details are only logged.
+     */
+    static final String INTERNAL_ERROR_MESSAGE = "The task failed because of an internal error, the details are in the server log";
     private final TaskMetrics metrics;
     /**
      * Tracer of the host, when it traces: a task runs later on another thread, so it gets a span of its own ({@code task <type>}); null without tracing.
@@ -274,8 +283,7 @@ public class TaskRunner {
         } catch (Exception e) {
             log.error("Durable task {} ({}) failed", progress.getId(), progress.getType(), e);
             var failures = revert(progress);
-            var message = e.getMessage() == null ? e.getClass()
-                .getSimpleName() : e.getMessage();
+            var message = failureMessage(e);
             progress.fail(failures == 0 ? message : message + " (" + failures + " changes could not be reverted)");
         } finally {
             active.remove(progress.getId());
@@ -298,13 +306,47 @@ public class TaskRunner {
             var failures = revert(progress);
             progress.cancelled(cancelMessage(progress, failures));
         } catch (Exception e) {
+            log.error("Task {} ({}) failed", progress.getId(), progress.getType(), e);
             var failures = revert(progress);
-            var message = e.getMessage() == null ? e.getClass()
-                .getSimpleName() : e.getMessage();
+            var message = failureMessage(e);
             progress.fail(failures == 0 ? message : message + " (" + failures + " changes could not be reverted)");
         } finally {
             metrics.finished(progress);
         }
+    }
+
+    /**
+     * The failure text shown to the user who follows the task. A database, persistence or transaction failure anywhere in the cause chain is reported as an
+     * internal error only: the driver's message names tables, constraints and statements, which belong in the server log (written by the caller), not in the
+     * UI. Other failures carry the message the service raised them with (the reason of a {@link ResponseStatusException}), or the exception's name when it has
+     * none.
+     */
+    static String failureMessage(Exception e) {
+        if (isDataAccessFailure(e)) {
+            return INTERNAL_ERROR_MESSAGE;
+        }
+
+        if (e instanceof ResponseStatusException status
+            && status.getReason() != null) {
+            return status.getReason();
+        }
+
+        return e.getMessage() == null ? e.getClass()
+            .getSimpleName() : e.getMessage();
+    }
+
+    private static boolean isDataAccessFailure(Throwable throwable) {
+        var seen = 0;
+        for (var cause = throwable; cause != null
+                                    && seen < 32; cause = cause.getCause() == cause ? null : cause.getCause(), seen++) {
+            if (cause instanceof DataAccessException
+                || cause instanceof TransactionException
+                || cause instanceof PersistenceException
+                || cause instanceof SQLException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int revert(TaskProgress progress) {
