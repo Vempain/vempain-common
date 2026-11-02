@@ -19,7 +19,9 @@
 | `api/src/main/java/fi/poltsi/vempain/common/api/`              | `FileTypeEnum`, `TaskStatusEnum`                                                                                                                                                                            |
 | `api/src/main/java/fi/poltsi/vempain/common/api/request/`      | `LocationRequest`, `TagRequest`, `CopyrightRequest`                                                                                                                                                         |
 | `api/src/main/java/fi/poltsi/vempain/common/api/response/`     | `LocationResponse`, `TaskAcceptedResponse`, `TaskProgressResponse`                                                                                                                                          |
-| `api/src/main/java/fi/poltsi/vempain/common/rest/`             | `TaskAPI` (`/tasks`: list, get, cancel, dismiss)                                                                                                                                                            |
+| `api/src/main/java/fi/poltsi/vempain/common/rest/`             | `TaskAPI` (`/tasks`: list, get, cancel, dismiss), `MapAPI` (`/map`: clusters of a viewport, files of a cluster)                                                                                             |
+| `api/.../request/`, `api/.../response/`                        | `MapFilterRequest`, `MapClusterRequest`, `MapClusterFilesRequest`; `MapClusterResponse`, `MapClusterItem`, `MapFileResponse` (the map of GPS-tagged resources)                                              |
+| `core/src/main/java/fi/poltsi/vempain/common/map/`             | `MapClustering` (zoom -> precision rule, cell rounding, limits), `MapClusterQuery` (the one clustering SQL over a `MapQuerySchema`), `MapPrincipal` (who may read)                                          |
 | `core/src/main/java/fi/poltsi/vempain/common/task/`            | `TaskRunner`, `TaskProgressStore`, `TaskProgress`, `TaskLane`, `TaskController`, `TaskCommandExecutor` (interface), `TaskWork`, `Compensation`, `TaskCancelledException`                                    |
 | `core/src/main/java/fi/poltsi/vempain/common/task/`            | `TaskMetrics` (the `vempain.tasks.*` meters)                                                                                                                                                                |
 | `core/src/main/java/fi/poltsi/vempain/common/metrics/`         | `MetricsExportEnvironmentPostProcessor` (`vempain.metrics.*` -> OTLP push export; `META-INF/spring.factories`)                                                                                              |
@@ -28,6 +30,21 @@
 | `core/src/main/java/fi/poltsi/vempain/common/task/repository/` | `TaskRecordRepository` (lease based `claimNext`), `TaskCompensationRepository`                                                                                                                              |
 | `core/src/main/resources/db/task/task_tables.sql`              | Reference schema; copied into each consumer's own Flyway tree (`task_lanes.sql`: the incremental lane columns for hosts created before them)                                                                |
 | `*/src/test/java/...`                                          | `FileTypeEnumUTC`, `RequestContractJTC`, `ResponseContractJTC`, `TaskResponseContractJTC`, `TaskProgressStoreUTC`, `TaskProgressStoreDurableUTC`, `TaskRunnerUTC`, `TaskRunnerDurableUTC`                   |
+
+## The map of GPS-tagged resources (api + core)
+
+- `MapAPI` is hosted by the file backend (original files) and the admin backend (published site files) at `/map`: `POST /map/clusters` answers
+  the clusters of a viewport at a zoom level, `POST /map/files` the resources of one cluster. The clustering is done by PostgreSQL in
+  `MapClusterQuery`: the readable resources with a location (hemisphere-signed coordinates) inside the bounds are grouped by
+  `ROUND(coordinate, precision)` with `MapClustering.precisionForZoom(zoom)` (0 decimals up to zoom 2, one more every few levels, 5 = single
+  resources from zoom 16), capped at `MAX_CLUSTERS`; the cells are computed once in the CTE because PostgreSQL cannot match two separately
+  bound `:precision` placeholders in `SELECT` and `GROUP BY`. A backend feeds the query its table and column names through `MapQuerySchema`
+  (file table with `acl_id`, location table with five-decimal `latitude`/`longitude` + `_ref`, optional tag link/tag tables and a thumbnail
+  subquery over the alias `p`) and the caller through `MapPrincipal` (user id + unit ids; the ACL check is the usual read-privilege row of
+  the resource's ACL). Filters: file type, `from`/`to` on the taken time, tags (case insensitive, any of), file name text (escaped `LIKE`).
+  `MapClustering.cell` rounds like PostgreSQL (half away from zero) so a cell named by a response finds the same resources. Tests:
+  `MapClusteringUTC`, `MapClusterQueryUTC` (SQL shape and bound parameters), `MapContractJTC`; the grouping itself is covered by the hosting
+  backends' controller tests against PostgreSQL.
 
 ## The task facility (core)
 
