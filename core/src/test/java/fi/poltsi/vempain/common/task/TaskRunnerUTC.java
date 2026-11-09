@@ -50,7 +50,7 @@ class TaskRunnerUTC {
         assertThat(store.find(task.getId())).isPresent();
         assertThat(queued).hasSize(1);
 
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.COMPLETED);
@@ -65,7 +65,7 @@ class TaskRunnerUTC {
         var task = runner.submit("A", "title", 0, progress -> {
             throw new IllegalStateException("boom");
         });
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.FAILED);
@@ -77,7 +77,7 @@ class TaskRunnerUTC {
         var task = runner.submit("A", "title", 0, progress -> {
             throw new NullPointerException();
         });
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(task.getErrorMessage()).isEqualTo("NullPointerException");
@@ -90,7 +90,7 @@ class TaskRunnerUTC {
             throw new DataIntegrityViolationException("could not execute statement [ERROR: duplicate key value violates unique constraint \"ux_x\"]",
                     new SQLException("duplicate key value violates unique constraint \"ux_x\"", "23505"));
         });
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.FAILED);
@@ -125,7 +125,7 @@ class TaskRunnerUTC {
             return null;
         });
         SecurityContextHolder.clearContext();
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(task.getOwnerId()).isEqualTo(5L);
@@ -145,7 +145,7 @@ class TaskRunnerUTC {
                 synchronization.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
             }
             assertThat(queued).hasSize(1);
-            queued.get(0)
+            queued.getFirst()
                 .run();
             assertThat(task.getResult()).isEqualTo("late");
         } finally {
@@ -179,7 +179,7 @@ class TaskRunnerUTC {
         assertThat(runner.cancel(task)).isTrue();
         assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.QUEUED);
         assertThat(task.isCancelRequested()).isTrue();
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(ran.get()).isFalse();
@@ -204,7 +204,7 @@ class TaskRunnerUTC {
             reverted.add("never reached");
             return "unreachable";
         });
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.CANCELLED);
@@ -227,7 +227,7 @@ class TaskRunnerUTC {
             });
             throw new IllegalStateException("boom");
         });
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.FAILED);
@@ -244,7 +244,7 @@ class TaskRunnerUTC {
             progress.checkpoint();
             return null;
         });
-        queued.get(0)
+        queued.getFirst()
             .run();
 
         assertThat(task.getStatus()).isEqualTo(TaskStatusEnum.CANCELLED);
